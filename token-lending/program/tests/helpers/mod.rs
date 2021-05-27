@@ -4,6 +4,7 @@ pub mod flash_loan_receiver;
 pub mod genesis;
 
 use assert_matches::*;
+use solana_program::account_info::IntoAccountInfo;
 use solana_program::{program_option::COption, program_pack::Pack, pubkey::Pubkey};
 use solana_program_test::*;
 use solana_sdk::{
@@ -22,6 +23,7 @@ use spl_token_lending::{
         init_obligation, init_reserve, liquidate_obligation, refresh_reserve,
     },
     math::{Decimal, Rate, TryAdd, TryMul},
+    pyth,
     state::{
         InitLendingMarketParams, InitObligationParams, InitReserveParams, LendingMarket,
         NewReserveCollateralParams, NewReserveLiquidityParams, Obligation, ObligationCollateral,
@@ -29,8 +31,7 @@ use spl_token_lending::{
         ReserveLiquidity, INITIAL_COLLATERAL_RATIO, PROGRAM_VERSION,
     },
 };
-use std::convert::TryInto;
-use std::str::FromStr;
+use std::{convert::TryInto, str::FromStr};
 
 pub const QUOTE_CURRENCY: [u8; 32] =
     *b"USD\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
@@ -1110,7 +1111,17 @@ pub fn add_oracle(
         panic!("Unable to locate {}", filename);
     }));
 
-    let pyth_price = cast_mut::<pyth_client::Price>(pyth_price_data.as_mut_slice());
+    let mut pyth_price_account = Account {
+        lamports: u32::MAX as u64,
+        data: pyth_price_data,
+        owner: oracle_program_id.pubkey(),
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let pyth_price_info = (&price_pubkey, true, &mut pyth_price_account).into_account_info();
+
+    let mut pyth_price = pyth::Price::load(&pyth_price_info).unwrap();
 
     let decimals = 10u64
         .checked_pow(pyth_price.expo.checked_abs().unwrap().try_into().unwrap())
@@ -1124,16 +1135,7 @@ pub fn add_oracle(
         .try_into()
         .unwrap();
 
-    test.add_account(
-        price_pubkey,
-        Account {
-            lamports: u32::MAX as u64,
-            data: pyth_price_data,
-            owner: oracle_program_id.pubkey(),
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
+    test.add_account(price_pubkey, pyth_price_account);
 
     TestOracle {
         product_pubkey,

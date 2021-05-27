@@ -4,6 +4,7 @@ use crate::{
     error::LendingError,
     instruction::LendingInstruction,
     math::{Decimal, Rate, TryAdd, TryDiv, TryMul, WAD},
+    pyth,
     state::{
         CalculateBorrowResult, CalculateLiquidationResult, CalculateRepayResult,
         InitLendingMarketParams, InitObligationParams, InitReserveParams, LendingMarket,
@@ -266,17 +267,16 @@ fn process_init_reserve(
         return Err(LendingError::InvalidOracleConfig.into());
     }
 
-    let pyth_product_data = &pyth_product_info.try_borrow_data()?;
-    let pyth_product = pyth_client::cast::<pyth_client::Product>(pyth_product_data);
-    if pyth_product.magic != pyth_client::MAGIC {
+    let pyth_product = pyth::Product::load(pyth_product_info)?;
+    if pyth_product.magic != pyth::MAGIC {
         msg!("Pyth product account provided is not a valid Pyth account");
         return Err(LendingError::InvalidOracleConfig.into());
     }
-    if pyth_product.atype != pyth_client::AccountType::Product as u32 {
+    if pyth_product.atype != pyth::AccountType::Product as u32 {
         msg!("Pyth product account provided is not a valid Pyth product account");
         return Err(LendingError::InvalidOracleConfig.into());
     }
-    if pyth_product.ver != pyth_client::VERSION_1 {
+    if pyth_product.ver != pyth::VERSION_1 {
         msg!("Pyth product account provided has a different version than the Pyth client");
         return Err(LendingError::InvalidOracleConfig.into());
     }
@@ -298,9 +298,10 @@ fn process_init_reserve(
     let mut quote_currency = [0u8; 32];
 
     let mut pyth_product_attribute_iter = pyth_product.attr[..].iter();
-    let mut pyth_product_size = pyth_product.size as usize - pyth_client::PROD_HDR_SIZE;
+    let mut pyth_product_size = pyth_product.size as usize - pyth::PROD_HDR_SIZE;
     while pyth_product_size > 0 {
         let key = get_pyth_product_attribute(&mut pyth_product_attribute_iter);
+        // @FIXME: https://github.com/solana-labs/solana-program-library/pull/1757#discussion_r636511155
         let value = get_pyth_product_attribute(&mut pyth_product_attribute_iter);
 
         if key == "quote_currency" {
@@ -1752,11 +1753,10 @@ fn get_pyth_price(
     pyth_price_account_info: &AccountInfo,
     clock: &Clock,
 ) -> Result<Decimal, ProgramError> {
-    let pyth_price_data = &pyth_price_account_info.try_borrow_data()?;
-    let pyth_price = pyth_client::cast::<pyth_client::Price>(pyth_price_data);
+    let pyth_price = pyth::Price::load(pyth_price_account_info)?;
 
     match pyth_price.ptype {
-        pyth_client::PriceType::Price => {}
+        pyth::PriceType::Price => {}
         _ => {
             msg!("Oracle price type is invalid");
             return Err(LendingError::InvalidOracleConfig.into());
