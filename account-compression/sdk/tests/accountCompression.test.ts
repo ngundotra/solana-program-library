@@ -20,7 +20,7 @@ import {
   getProofOfLeaf,
   updateTree,
   Tree,
-} from "./merkleTree";
+} from "../src/merkle-tree";
 import {
   createReplaceIx,
   createAppendIx,
