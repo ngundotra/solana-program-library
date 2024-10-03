@@ -10,7 +10,8 @@ on:
       - ".github/workflows/pull-request-account-compression.yml"
       - "!account-compression/sdk/**"
   push:
-    branches: [master, hawktuah]
+    branches:
+      - hawktuah
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
